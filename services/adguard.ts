@@ -10,6 +10,60 @@ const getClient = () => {
   });
 };
 
+export const addClient = async (client: {
+  name: string;
+  ids: string[];
+  tags?: string[];
+}) => {
+  const { data } = await getClient().post("/clients/add", {
+    name: client.name,
+    ids: client.ids,
+    tags: [],
+    use_global_settings: true,
+    filtering_enabled: true,
+    parental_enabled: false,
+    safebrowsing_enabled: false,
+    safesearch_enabled: false,
+    use_global_blocked_services: true,
+  });
+  return data;
+};
+
+export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
+  const { data } = await getClient().get("/querylog?limit=1000");
+  const entries = data?.data ?? [];
+
+  const seen = new Set<string>();
+  const toAdd: string[] = [];
+
+  for (const entry of entries) {
+    const ip = entry.client;
+    if (ip && !seen.has(ip) && !registeredIds.includes(ip)) {
+      seen.add(ip);
+      toAdd.push(ip);
+    }
+  }
+
+  console.log("IPs to add:", JSON.stringify(toAdd));
+
+  let added = 0;
+  for (const ip of toAdd) {
+    try {
+      await addClient({
+        name: `Device-${ip.split(".").pop()}`,
+        ids: [ip],
+        tags: [],
+      });
+      added++;
+      console.log("Added:", ip);
+    } catch (e: any) {
+      console.log("Failed to add:", ip, e?.response?.data ?? e?.message);
+    }
+  }
+
+  return added;
+};
+
 // ── Status ────────────────────────────────────────────────────────────────────
 export const getStatus = async () => {
   const { data } = await getClient().get('/status');
