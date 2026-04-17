@@ -1,38 +1,38 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StatusBar, SafeAreaView } from 'react-native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useAuthStore } from './stores/auth';
-import LoginScreen from './app/login';
-import DashboardScreen from './app/dashboard';
-import DevicesScreen from './app/devices';
-import QueryLogScreen from './app/querylog';
+import React, { useEffect, useState, useRef } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StatusBar,
+  SafeAreaView,
+} from "react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useAuthStore } from "./stores/auth";
+import LoginScreen from "./app/screens/login";
+import DashboardScreen from "./app/screens/dashboard";
+import DevicesScreen from "./app/screens/devices";
+import QueryLogScreen from "./app/screens/querylog";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      staleTime: 10000,
-    },
-  },
-});
-
-type Tab = 'dashboard' | 'devices' | 'querylog';
+type Tab = "dashboard" | "devices" | "querylog";
 
 const tabs: { key: Tab; label: string; icon: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { key: 'devices', label: 'Devices', icon: '📱' },
-  { key: 'querylog', label: 'Queries', icon: '📋' },
+  { key: "dashboard", label: "Dashboard", icon: "📊" },
+  { key: "devices", label: "Devices", icon: "📱" },
+  { key: "querylog", label: "Queries", icon: "📋" },
 ];
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const { clearCredentials } = useAuthStore();
 
   const renderScreen = () => {
     switch (activeTab) {
-      case 'dashboard': return <DashboardScreen />;
-      case 'devices': return <DevicesScreen />;
-      case 'querylog': return <QueryLogScreen />;
+      case "dashboard":
+        return <DashboardScreen />;
+      case "devices":
+        return <DevicesScreen />;
+      case "querylog":
+        return <QueryLogScreen />;
     }
   };
 
@@ -47,7 +47,7 @@ function MainApp() {
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 16,
-          paddingTop: 44, // ← add this
+          paddingTop: 44,
           paddingBottom: 12,
           borderBottomWidth: 1,
           borderBottomColor: "#1e293b",
@@ -103,25 +103,53 @@ export default function App() {
   const { isConnected, loadCredentials } = useAuthStore();
   const [loading, setLoading] = useState(true);
 
+  // ✅ QueryClient lives inside the component so it resets cleanly on reconnect.
+  // Key fix: throwOnError: false so query errors NEVER crash the component tree.
+  // onError is handled per-query (show empty state) not globally (don't log out).
+  const queryClientRef = useRef<QueryClient>();
+  if (!queryClientRef.current) {
+    queryClientRef.current = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: 2,
+          staleTime: 10_000,
+          throwOnError: false, // ← prevents React render crashes on query failure
+        },
+        mutations: {
+          throwOnError: false,
+        },
+      },
+    });
+  }
+
   useEffect(() => {
     loadCredentials().finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0f172a',
-        alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#0f172a",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Text style={{ fontSize: 48 }}>🛡️</Text>
       </View>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {isConnected
-        ? <MainApp />
-        : <LoginScreen onLogin={() => useAuthStore.setState({ isConnected: true })} />
-      }
+    <QueryClientProvider client={queryClientRef.current}>
+      {isConnected ? (
+        <MainApp />
+      ) : (
+        <LoginScreen
+          onLogin={() => useAuthStore.setState({ isConnected: true })}
+        />
+      )}
     </QueryClientProvider>
   );
 }

@@ -6,7 +6,7 @@ interface AuthState {
   username: string;
   password: string;
   isConnected: boolean;
-  setCredentials: (host: string, username: string, password: string) => void;
+  setCredentials: (host: string, username: string, password: string) => Promise<void>;
   clearCredentials: () => void;
   loadCredentials: () => Promise<boolean>;
 }
@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     await SecureStore.setItemAsync('agh_host', host);
     await SecureStore.setItemAsync('agh_username', username);
     await SecureStore.setItemAsync('agh_password', password);
-    set({ host, username, password, isConnected: true });
+    set({ host, username, password });
   },
 
   clearCredentials: async () => {

@@ -15,7 +15,7 @@ export const addClient = async (client: {
   ids: string[];
   tags?: string[];
 }) => {
-  const { data } = await getClient().post("/clients/add", {
+  const { data } = await getClient().post('/clients/add', {
     name: client.name,
     ids: client.ids,
     tags: [],
@@ -29,35 +29,76 @@ export const addClient = async (client: {
   return data;
 };
 
-export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
-  const { data } = await getClient().get("/querylog?limit=1000");
-  const entries = data?.data ?? [];
+/**
+ * Fetch all unique client IPs from the query log by paginating until
+ * we've seen no new IPs for two consecutive pages, or hit the max page limit.
+ */
+const fetchAllUniqueClients = async (): Promise<Record<string, string[]>> => {
+  const PAGE_SIZE = 1000;
+  const MAX_PAGES = 10;
+  const clientQueries: Record<string, string[]> = {};
+  let offset = 0;
+  let stablePages = 0;
 
-  const seen = new Set<string>();
-  const toAdd: string[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data } = await getClient().get(`/querylog?limit=${PAGE_SIZE}&offset=${offset}`);
+    const entries = data?.data ?? [];
+    if (entries.length === 0) break;
 
-  for (const entry of entries) {
-    const ip = entry.client;
-    if (ip && !seen.has(ip) && !registeredIds.includes(ip)) {
-      seen.add(ip);
-      toAdd.push(ip);
+    let newIPsThisPage = 0;
+    for (const entry of entries) {
+      const ip = entry.client;
+      if (!ip || ip === '127.0.0.1') continue;
+      if (!clientQueries[ip]) {
+        clientQueries[ip] = [];
+        newIPsThisPage++;
+      }
+      if (entry.question?.name) clientQueries[ip].push(entry.question.name);
     }
+
+    offset += PAGE_SIZE;
+
+    if (newIPsThisPage === 0) {
+      stablePages++;
+      if (stablePages >= 2) break;
+    } else {
+      stablePages = 0;
+    }
+
+    if (entries.length < PAGE_SIZE) break;
   }
 
-  console.log("IPs to add:", JSON.stringify(toAdd));
+  return clientQueries;
+};
+
+export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
+  const clientQueries = await fetchAllUniqueClients();
+  const toAdd = Object.keys(clientQueries).filter(
+    (ip) => !registeredIds.includes(ip)
+  );
+
+  const { detectDevice, lookupMacVendor } = await import('./deviceDetection');
 
   let added = 0;
   for (const ip of toAdd) {
     try {
-      await addClient({
-        name: `Device-${ip.split(".").pop()}`,
-        ids: [ip],
-        tags: [],
-      });
+      const domains = clientQueries[ip];
+
+      // Warm the OUI cache before detection — 1 req/device, only for new devices
+      // MAC is not available from query log (only IP), so we pass empty string.
+      // If you integrate DHCP lease data in future, pass the MAC here.
+      await lookupMacVendor('');
+
+      const info = detectDevice(ip, '', domains);
+      const parts = ip.split('.');
+      const suffix = parts.length === 4 ? `${parts[2]}.${parts[3]}` : ip;
+      const name = `${info.suggestedName} ${suffix}`;
+
+      await addClient({ name, ids: [ip], tags: [] });
+      console.log(`Added: ${ip} → ${name}`);
       added++;
-      console.log("Added:", ip);
     } catch (e: any) {
-      console.log("Failed to add:", ip, e?.response?.data ?? e?.message);
+      console.log('Failed:', ip, e?.response?.data ?? e?.message);
     }
   }
 
@@ -84,8 +125,8 @@ export const getClients = async () => {
 
 export const getClientsWithStatus = async () => {
   const [clientsData, accessData] = await Promise.all([
-    getClient().get("/clients"),
-    getClient().get("/access/list"),
+    getClient().get('/clients'),
+    getClient().get('/access/list'),
   ]);
   const disallowed: string[] = accessData.data.disallowed_clients ?? [];
   const clients = clientsData.data.clients ?? [];
@@ -98,7 +139,7 @@ export const getClientsWithStatus = async () => {
 };
 
 export const getDisallowedClients = async (): Promise<string[]> => {
-  const { data } = await getClient().get("/access/list");
+  const { data } = await getClient().get('/access/list');
   return data.disallowed_clients ?? [];
 };
 
@@ -108,13 +149,14 @@ export const blockClient = async (identifier: string, block: boolean) => {
     ? [...new Set([...current, identifier])]
     : current.filter((c) => c !== identifier);
 
-  const { data } = await getClient().post("/access/set", {
+  const { data } = await getClient().post('/access/set', {
     disallowed_clients: updated,
     allowed_clients: [],
     blocked_hosts: [],
   });
   return data;
 };
+
 // ── Query Log ─────────────────────────────────────────────────────────────────
 export const getQueryLog = async (limit = 50) => {
   const { data } = await getClient().get(`/querylog?limit=${limit}`);

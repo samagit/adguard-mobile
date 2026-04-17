@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, FlatList, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { getQueryLog } from '../services/adguard';
+import { getQueryLog } from '../../services/adguard';
 
 const getReasonColor = (reason: string) => {
   if (reason?.includes('Block') || reason?.includes('block')) return '#ef4444';

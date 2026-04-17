@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { getStats, getStatus, setProtection } from '../services/adguard';
+import { getStats, getStatus, setProtection } from '../../services/adguard';
 
 const StatCard = ({ label, value, color }: {
   label: string; value: string | number; color: string
