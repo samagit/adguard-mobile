@@ -22,7 +22,7 @@
         "backgroundColor": "#0d1f3c"
       },
       "package": "com.samagit.adguardmobile",
-      "versionCode": 3,
+      "versionCode": 4,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true
