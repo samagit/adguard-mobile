@@ -1,11 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
+import { View, Text, TouchableOpacity, StatusBar } from "react-native";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StatusBar,
-  SafeAreaView,
-} from "react-native";
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuthStore } from "./stores/auth";
 import LoginScreen from "./app/screens/login";
@@ -24,6 +22,7 @@ const tabs: { key: Tab; label: string; icon: string }[] = [
 function MainApp() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const { clearCredentials } = useAuthStore();
+  const insets = useSafeAreaInsets();
 
   const renderScreen = () => {
     switch (activeTab) {
@@ -37,7 +36,7 @@ function MainApp() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#0f172a" }}>
+    <View style={{ flex: 1, backgroundColor: "#0f172a" }}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
 
       {/* Header */}
@@ -47,10 +46,11 @@ function MainApp() {
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 16,
-          paddingTop: 44,
+          paddingTop: insets.top + 8,
           paddingBottom: 12,
           borderBottomWidth: 1,
           borderBottomColor: "#1e293b",
+          backgroundColor: "#0f172a",
         }}
       >
         <Text style={{ color: "#f1f5f9", fontSize: 18, fontWeight: "bold" }}>
@@ -71,8 +71,8 @@ function MainApp() {
           backgroundColor: "#1e293b",
           borderTopWidth: 1,
           borderTopColor: "#334155",
-          paddingBottom: 8,
           paddingTop: 8,
+          paddingBottom: Math.max(insets.bottom, 8),
         }}
       >
         {tabs.map((tab) => (
@@ -95,7 +95,7 @@ function MainApp() {
           </TouchableOpacity>
         ))}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -103,17 +103,14 @@ export default function App() {
   const { isConnected, loadCredentials } = useAuthStore();
   const [loading, setLoading] = useState(true);
 
-  // ✅ QueryClient lives inside the component so it resets cleanly on reconnect.
-  // Key fix: throwOnError: false so query errors NEVER crash the component tree.
-  // onError is handled per-query (show empty state) not globally (don't log out).
-  const queryClientRef = useRef<QueryClient>();
+  const queryClientRef = useRef<QueryClient | undefined>(undefined);
   if (!queryClientRef.current) {
     queryClientRef.current = new QueryClient({
       defaultOptions: {
         queries: {
           retry: 2,
           staleTime: 10_000,
-          throwOnError: false, // ← prevents React render crashes on query failure
+          throwOnError: false,
         },
         mutations: {
           throwOnError: false,
@@ -128,28 +125,32 @@ export default function App() {
 
   if (loading) {
     return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "#0f172a",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ fontSize: 48 }}>🛡️</Text>
-      </View>
+      <SafeAreaProvider>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0f172a",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Text style={{ fontSize: 48 }}>🛡️</Text>
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <QueryClientProvider client={queryClientRef.current}>
-      {isConnected ? (
-        <MainApp />
-      ) : (
-        <LoginScreen
-          onLogin={() => useAuthStore.setState({ isConnected: true })}
-        />
-      )}
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClientRef.current}>
+        {isConnected ? (
+          <MainApp />
+        ) : (
+          <LoginScreen
+            onLogin={() => useAuthStore.setState({ isConnected: true })}
+          />
+        )}
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
