@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
@@ -22,22 +21,22 @@
         "backgroundColor": "#0d1f3c"
       },
       "package": "com.samagit.adguardmobile",
-      "versionCode": 4,
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
-      "usesCleartextTraffic": true
+      "versionCode": 5,
+      "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "d4d56fd2-7171-4597-8c2d-052440f477bd"
-      }
-    }
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
   }
 }
