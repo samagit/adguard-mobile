@@ -90,10 +90,11 @@ export default function DeviceRow({
         )}
       </View>
 
-      {/* Toggle */}
+      {/* Toggle — disabled for offline devices to prevent accidental taps */}
       <Switch
         value={toggleValue}
-        onValueChange={onToggleBlock}
+        onValueChange={offline ? undefined : onToggleBlock}
+        disabled={offline}
         trackColor={{ false: trackColorFalse, true: trackColorTrue }}
         thumbColor={thumbColor}
       />
