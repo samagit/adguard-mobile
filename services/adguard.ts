@@ -80,14 +80,21 @@ export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
 
   if (toAdd.length === 0) return 0;
 
-  // ✅ Fetch MAC addresses from OPNsense DHCP leases if configured
+  // Fetch full DHCP lease data from OPNsense if configured
+  // Leases provide MAC, hostname, and vendor — much better than domain detection alone
   let ipMacMap: Record<string, string> = {};
+  let ipHostnameMap: Record<string, string> = {};
+  let ipVendorMap: Record<string, string> = {};
   try {
-    const { buildIpMacMap } = await import('./opnsense');
-    ipMacMap = await buildIpMacMap();
-    console.log('OPNsense MAC map:', JSON.stringify(ipMacMap));
+    const { fetchDhcpLeases } = await import('./opnsense');
+    const leases = await fetchDhcpLeases();
+    for (const lease of leases) {
+      ipMacMap[lease.ip] = lease.mac;
+      if (lease.hostname) ipHostnameMap[lease.ip] = lease.hostname;
+      if (lease.vendor) ipVendorMap[lease.ip] = lease.vendor;
+    }
   } catch (opnErr: any) {
-    console.log('OPNsense import/fetch error:', opnErr?.message ?? opnErr);
+    console.log('OPNsense fetch error:', opnErr?.message ?? opnErr);
   }
 
   const { detectDevice } = await import('./deviceDetection');
@@ -97,15 +104,24 @@ export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
     try {
       const domains = clientQueries[ip];
       const mac = ipMacMap[ip] ?? '';
-      const info = detectDevice(ip, mac, domains);
-
+      const dhcpHostname = ipHostnameMap[ip] ?? '';
       const parts = ip.split('.');
       const suffix = parts.length === 4 ? `${parts[2]}.${parts[3]}` : ip;
-      const baseName = info.suggestedName;
-      const name = baseName.endsWith(suffix) ? baseName : `${baseName} ${suffix}`;
 
-      // ✅ Store both IP and MAC in ids[] when MAC is available
-      // This allows online detection by MAC even if IP changes
+      let name: string;
+
+      if (dhcpHostname) {
+        // ✅ Use OPNsense DHCP hostname — most reliable, set by device itself
+        // e.g. "MagiCam", "GAMINGSTATION", "ArcherAX90"
+        name = dhcpHostname;
+      } else {
+        // Fall back to domain signature + MAC vendor detection
+        const info = detectDevice(ip, mac, domains);
+        const baseName = info.suggestedName;
+        name = baseName.endsWith(suffix) ? baseName : `${baseName} ${suffix}`;
+      }
+
+      // Store both IP and MAC in ids[] when MAC is available
       const ids = mac ? [ip, mac] : [ip];
 
       await addClient({ name, ids, tags: [] });
