@@ -20,12 +20,13 @@ import {
   getQueryLog,
 } from "../../services/adguard";
 import DeviceRow from "../../components/DeviceRow";
-import DeviceDetailSheet, {
-  DeviceInfo,
-} from "../../components/DeviceDetailSheet";
+import DeviceDetailSheet, { DeviceInfo } from "../../components/DeviceDetailSheet";
 
 const DISCOVERY_COOLDOWN_MS = 5 * 60 * 1000;
-const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+const ONLINE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours — covers low-traffic IoT devices
+
+// MAC address regex — used to distinguish MACs from IPs in ids[]
+const MAC_REGEX = /^([0-9a-f]{2}:){5}[0-9a-f]{2}$/i;
 
 export default function DevicesScreen() {
   const [search, setSearch] = useState("");
@@ -45,14 +46,17 @@ export default function DevicesScreen() {
   });
 
   // Fetch recent query log to determine online status
+  // Large limit to cover low-traffic devices; 2h threshold handles the rest
   const { data: queryLogData } = useQuery({
     queryKey: ["querylog-recent"],
-    queryFn: () => getQueryLog(500),
+    queryFn: () => getQueryLog(2000),
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
 
-  // Build IP → last seen timestamp map
+  // Build lookup maps from query log:
+  // IP → last seen timestamp
+  // MAC is not in query log — we use IP for query log, MAC for identity matching
   const lastSeenMap = React.useMemo(() => {
     const map: Record<string, number> = {};
     for (const entry of queryLogData?.data ?? []) {
@@ -64,14 +68,22 @@ export default function DevicesScreen() {
     return map;
   }, [queryLogData]);
 
+  /**
+   * Determine if a device is online.
+   * ids[] may contain IPs and/or MACs.
+   * We check IPs against the query log last-seen map.
+   * MACs are used as stable identifiers but not for last-seen lookup
+   * (query log only has IPs).
+   */
   const isOnline = useCallback(
     (ids: string[]): boolean => {
       const now = Date.now();
-      return ids.some(
-        (id) => lastSeenMap[id] && now - lastSeenMap[id] < ONLINE_THRESHOLD_MS,
+      const ipIds = ids.filter((id) => !MAC_REGEX.test(id));
+      return ipIds.some(
+        (ip) => lastSeenMap[ip] && now - lastSeenMap[ip] < ONLINE_THRESHOLD_MS
       );
     },
-    [lastSeenMap],
+    [lastSeenMap]
   );
 
   const { mutate: toggleBlock } = useMutation({
@@ -85,64 +97,56 @@ export default function DevicesScreen() {
         clients: old?.clients?.map((c: any) =>
           c.ids?.includes(newClient.identifier)
             ? { ...c, disallowed: newClient.disallowed }
-            : c,
+            : c
         ),
       }));
       setSelectedDevice((prev) =>
         prev?.identifier === newClient.identifier
           ? { ...prev, disallowed: newClient.disallowed }
-          : prev,
+          : prev
       );
       return { previous };
     },
     onError: (_, __, context) => {
-      if (context?.previous)
-        queryClient.setQueryData(["clients"], context.previous);
+      if (context?.previous) queryClient.setQueryData(["clients"], context.previous);
     },
     onSuccess: () => {
-      setTimeout(
-        () => queryClient.invalidateQueries({ queryKey: ["clients"] }),
-        1500,
-      );
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["clients"] }), 1500);
     },
   });
 
-  const runDiscovery = useCallback(
-    async (force = false) => {
-      if (discoveringRef.current) return;
-      const now = Date.now();
-      if (!force && now - lastDiscoveryRef.current < DISCOVERY_COOLDOWN_MS)
-        return;
-      discoveringRef.current = true;
-      lastDiscoveryRef.current = now;
-      setIsDiscovering(true);
-      try {
-        const fresh = await getClientsWithStatus();
-        const clients = fresh?.clients ?? [];
-        const registeredIds = clients.flatMap((c: any) => c.ids ?? []);
-        const added = await autoAddDiscoveredDevices(registeredIds);
-        if (added > 0) {
-          await new Promise((r) => setTimeout(r, 1000));
-          await refetch();
-        }
-      } catch (e) {
-        console.log("Discovery error:", e);
-      } finally {
-        discoveringRef.current = false;
-        setIsDiscovering(false);
+  const runDiscovery = useCallback(async (force = false) => {
+    if (discoveringRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastDiscoveryRef.current < DISCOVERY_COOLDOWN_MS) return;
+    discoveringRef.current = true;
+    lastDiscoveryRef.current = now;
+    setIsDiscovering(true);
+    try {
+      const fresh = await getClientsWithStatus();
+      const clients = fresh?.clients ?? [];
+      const registeredIds = clients.flatMap((c: any) => c.ids ?? []);
+      const added = await autoAddDiscoveredDevices(registeredIds);
+      if (added > 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        await refetch();
       }
-    },
-    [refetch],
-  );
+    } catch (e) {
+      console.log("Discovery error:", e);
+    } finally {
+      discoveringRef.current = false;
+      setIsDiscovering(false);
+    }
+  }, [refetch]);
 
-  useEffect(() => {
-    runDiscovery();
-  }, []);
+  useEffect(() => { runDiscovery(); }, []);
 
   function openDetail(item: any) {
+    // Use the first IP (not MAC) as the identifier for blocking
+    const ipId = item.ids?.find((id: string) => !MAC_REGEX.test(id)) ?? item.ids?.[0] ?? item.name;
     setSelectedDevice({
       name: item.name,
-      identifier: item.ids?.[0] ?? item.name,
+      identifier: ipId,
       ids: item.ids ?? [],
       disallowed: item.disallowed,
     });
@@ -153,7 +157,7 @@ export default function DevicesScreen() {
     queryClient.setQueryData(["clients"], (old: any) => ({
       ...old,
       clients: old?.clients?.map((c: any) =>
-        c.ids?.includes(identifier) ? { ...c, name: newName } : c,
+        c.ids?.includes(identifier) ? { ...c, name: newName } : c
       ),
     }));
   }
@@ -161,8 +165,7 @@ export default function DevicesScreen() {
   async function handleDelete(identifier: string) {
     queryClient.setQueryData(["clients"], (old: any) => ({
       ...old,
-      clients:
-        old?.clients?.filter((c: any) => !c.ids?.includes(identifier)) ?? [],
+      clients: old?.clients?.filter((c: any) => !c.ids?.includes(identifier)) ?? [],
     }));
     await runDiscovery(true);
   }
@@ -172,7 +175,7 @@ export default function DevicesScreen() {
   const filtered = allClients.filter(
     (c: any) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.ids?.some((id: string) => id.includes(search)),
+      c.ids?.some((id: string) => id.includes(search))
   );
 
   const onlineClients = filtered.filter((c: any) => isOnline(c.ids ?? []));
@@ -187,35 +190,21 @@ export default function DevicesScreen() {
         placeholder="Search devices..."
         placeholderTextColor="#475569"
         style={{
-          backgroundColor: "#1e293b",
-          color: "#f1f5f9",
-          padding: 12,
-          borderRadius: 10,
-          marginBottom: 12,
-          borderWidth: 1,
-          borderColor: "#334155",
-          fontSize: 14,
+          backgroundColor: "#1e293b", color: "#f1f5f9",
+          padding: 12, borderRadius: 10, marginBottom: 12,
+          borderWidth: 1, borderColor: "#334155", fontSize: 14,
         }}
       />
 
       {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 8,
-        }}
-      >
+      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <Text style={{ color: "#64748b", fontSize: 12 }}>
           {onlineClients.length} ONLINE · {offlineClients.length} OFFLINE
         </Text>
         {isDiscovering && (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
             <ActivityIndicator size="small" color="#3b82f6" />
-            <Text style={{ color: "#3b82f6", fontSize: 12 }}>
-              Discovering...
-            </Text>
+            <Text style={{ color: "#3b82f6", fontSize: 12 }}>Discovering...</Text>
           </View>
         )}
       </View>
@@ -242,9 +231,7 @@ export default function DevicesScreen() {
             {/* ── ONLINE ── */}
             {onlineClients.length > 0 && (
               <View>
-                <Text style={sectionHeaderStyle}>
-                  ONLINE ({onlineClients.length})
-                </Text>
+                <Text style={sectionHeaderStyle}>ONLINE ({onlineClients.length})</Text>
                 {onlineClients.map((item: any) => (
                   <DeviceRow
                     key={item.ids?.[0] ?? item.name}
@@ -253,10 +240,7 @@ export default function DevicesScreen() {
                     disallowed={item.disallowed}
                     offline={false}
                     onToggleBlock={(val) =>
-                      toggleBlock({
-                        identifier: item.ids?.[0] ?? item.name,
-                        disallowed: !val,
-                      })
+                      toggleBlock({ identifier: item.ids?.find((id: string) => !MAC_REGEX.test(id)) ?? item.ids?.[0] ?? item.name, disallowed: !val })
                     }
                     onPressDetail={() => openDetail(item)}
                   />
@@ -268,19 +252,11 @@ export default function DevicesScreen() {
             {offlineClients.length > 0 && (
               <View style={{ marginTop: 12 }}>
                 <TouchableOpacity
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    paddingVertical: 4,
-                    marginBottom: 4,
-                  }}
+                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4, marginBottom: 4 }}
                   onPress={() => setOfflineExpanded((v) => !v)}
                   activeOpacity={0.7}
                 >
-                  <Text style={sectionHeaderStyle}>
-                    OFFLINE ({offlineClients.length})
-                  </Text>
+                  <Text style={sectionHeaderStyle}>OFFLINE ({offlineClients.length})</Text>
                   <Ionicons
                     name={offlineExpanded ? "chevron-up" : "chevron-down"}
                     size={16}
@@ -297,22 +273,17 @@ export default function DevicesScreen() {
                       disallowed={item.disallowed}
                       offline={true}
                       onToggleBlock={(val) =>
-                        toggleBlock({
-                          identifier: item.ids?.[0] ?? item.name,
-                          disallowed: !val,
-                        })
+                        toggleBlock({ identifier: item.ids?.find((id: string) => !MAC_REGEX.test(id)) ?? item.ids?.[0] ?? item.name, disallowed: !val })
                       }
                       onPressDetail={() => openDetail(item)}
                     />
-                  ))}
+                  ))
+                }
               </View>
             )}
 
-            {/* Empty state */}
             {onlineClients.length === 0 && offlineClients.length === 0 && (
-              <Text
-                style={{ color: "#64748b", textAlign: "center", marginTop: 32 }}
-              >
+              <Text style={{ color: "#64748b", textAlign: "center", marginTop: 32 }}>
                 {isDiscovering ? "Discovering devices..." : "No devices found"}
               </Text>
             )}

@@ -1,5 +1,5 @@
-import axios from "axios";
-import { useAuthStore } from "../stores/auth";
+import axios from 'axios';
+import { useAuthStore } from '../stores/auth';
 
 const getClient = () => {
   const { host, username, password } = useAuthStore.getState();
@@ -10,15 +10,15 @@ const getClient = () => {
   });
 };
 
-// ── IPs to always ignore during discovery ─────────────────────────────────────
-const IGNORED_IPS = new Set(["127.0.0.1", "::1", "0.0.0.0"]);
+// ── IPs to always ignore ───────────────────────────────────────────────────────
+const IGNORED_IPS = new Set(['127.0.0.1', '::1', '0.0.0.0']);
 
 export const addClient = async (client: {
   name: string;
   ids: string[];
   tags?: string[];
 }) => {
-  const { data } = await getClient().post("/clients/add", {
+  const { data } = await getClient().post('/clients/add', {
     name: client.name,
     ids: client.ids,
     tags: [],
@@ -44,16 +44,13 @@ const fetchAllUniqueClients = async (): Promise<Record<string, string[]>> => {
   let stablePages = 0;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const { data } = await getClient().get(
-      `/querylog?limit=${PAGE_SIZE}&offset=${offset}`,
-    );
+    const { data } = await getClient().get(`/querylog?limit=${PAGE_SIZE}&offset=${offset}`);
     const entries = data?.data ?? [];
     if (entries.length === 0) break;
 
     let newIPsThisPage = 0;
     for (const entry of entries) {
       const ip = entry.client;
-      // ✅ Fix 1: filter localhost and other system IPs
       if (!ip || IGNORED_IPS.has(ip)) continue;
       if (!clientQueries[ip]) {
         clientQueries[ip] = [];
@@ -63,14 +60,12 @@ const fetchAllUniqueClients = async (): Promise<Record<string, string[]>> => {
     }
 
     offset += PAGE_SIZE;
-
     if (newIPsThisPage === 0) {
       stablePages++;
       if (stablePages >= 2) break;
     } else {
       stablePages = 0;
     }
-
     if (entries.length < PAGE_SIZE) break;
   }
 
@@ -80,34 +75,44 @@ const fetchAllUniqueClients = async (): Promise<Record<string, string[]>> => {
 export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
   const clientQueries = await fetchAllUniqueClients();
   const toAdd = Object.keys(clientQueries).filter(
-    (ip) => !registeredIds.includes(ip),
+    (ip) => !registeredIds.includes(ip)
   );
 
   if (toAdd.length === 0) return 0;
 
-  const { detectDevice } = await import("./deviceDetection");
+  // ✅ Fetch MAC addresses from OPNsense DHCP leases if configured
+  let ipMacMap: Record<string, string> = {};
+  try {
+    const { buildIpMacMap } = await import('./opnsense');
+    ipMacMap = await buildIpMacMap();
+    console.log('OPNsense MAC map:', JSON.stringify(ipMacMap));
+  } catch (opnErr: any) {
+    console.log('OPNsense import/fetch error:', opnErr?.message ?? opnErr);
+  }
+
+  const { detectDevice } = await import('./deviceDetection');
 
   let added = 0;
   for (const ip of toAdd) {
     try {
       const domains = clientQueries[ip];
-      const info = detectDevice(ip, "", domains);
+      const mac = ipMacMap[ip] ?? '';
+      const info = detectDevice(ip, mac, domains);
 
-      // ✅ Fix 2: only append suffix for unknown devices, not for named ones
-      // e.g. "LG Smart TV" → "LG Smart TV 1.140"
-      // but avoid "Device 1.140 1.140" by checking if name already ends with suffix
-      const parts = ip.split(".");
+      const parts = ip.split('.');
       const suffix = parts.length === 4 ? `${parts[2]}.${parts[3]}` : ip;
       const baseName = info.suggestedName;
-      const name = baseName.endsWith(suffix)
-        ? baseName
-        : `${baseName} ${suffix}`;
+      const name = baseName.endsWith(suffix) ? baseName : `${baseName} ${suffix}`;
 
-      await addClient({ name, ids: [ip], tags: [] });
-      console.log(`Added: ${ip} → ${name}`);
+      // ✅ Store both IP and MAC in ids[] when MAC is available
+      // This allows online detection by MAC even if IP changes
+      const ids = mac ? [ip, mac] : [ip];
+
+      await addClient({ name, ids, tags: [] });
+      console.log(`Added: ${ip} (${mac || 'no MAC'}) → ${name}`);
       added++;
     } catch (e: any) {
-      console.log("Failed:", ip, e?.response?.data ?? e?.message);
+      console.log('Failed:', ip, e?.response?.data ?? e?.message);
     }
   }
 
@@ -116,31 +121,30 @@ export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
 
 // ── Status ────────────────────────────────────────────────────────────────────
 export const getStatus = async () => {
-  const { data } = await getClient().get("/status");
+  const { data } = await getClient().get('/status');
   return data;
 };
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 export const getStats = async () => {
-  const { data } = await getClient().get("/stats");
+  const { data } = await getClient().get('/stats');
   return data;
 };
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const getClients = async () => {
-  const { data } = await getClient().get("/clients");
+  const { data } = await getClient().get('/clients');
   return data;
 };
 
 export const getClientsWithStatus = async () => {
   const [clientsData, accessData] = await Promise.all([
-    getClient().get("/clients"),
-    getClient().get("/access/list"),
+    getClient().get('/clients'),
+    getClient().get('/access/list'),
   ]);
   const disallowed: string[] = accessData.data.disallowed_clients ?? [];
   const clients = clientsData.data.clients ?? [];
   return {
-    // ✅ Fix 3: filter out localhost/system clients from the displayed list
     clients: clients
       .filter((c: any) => !c.ids?.every((id: string) => IGNORED_IPS.has(id)))
       .map((c: any) => ({
@@ -151,7 +155,7 @@ export const getClientsWithStatus = async () => {
 };
 
 export const getDisallowedClients = async (): Promise<string[]> => {
-  const { data } = await getClient().get("/access/list");
+  const { data } = await getClient().get('/access/list');
   return data.disallowed_clients ?? [];
 };
 
@@ -161,9 +165,8 @@ export const blockClient = async (identifier: string, block: boolean) => {
     ? [...new Set([...current, identifier])]
     : current.filter((c) => c !== identifier);
 
-  // ✅ Fix 4: preserve allowed_clients and blocked_hosts from existing config
-  const { data: accessData } = await getClient().get("/access/list");
-  await getClient().post("/access/set", {
+  const { data: accessData } = await getClient().get('/access/list');
+  await getClient().post('/access/set', {
     allowed_clients: accessData.allowed_clients ?? [],
     blocked_hosts: accessData.blocked_hosts ?? [],
     disallowed_clients: updated,
@@ -178,7 +181,7 @@ export const getQueryLog = async (limit = 50) => {
 
 // ── Protection ────────────────────────────────────────────────────────────────
 export const setProtection = async (enabled: boolean) => {
-  const { data } = await getClient().post("/dns_config", {
+  const { data } = await getClient().post('/dns_config', {
     protection_enabled: enabled,
   });
   return data;
@@ -186,11 +189,11 @@ export const setProtection = async (enabled: boolean) => {
 
 // ── Filtering ─────────────────────────────────────────────────────────────────
 export const getFilteringStatus = async () => {
-  const { data } = await getClient().get("/filtering/status");
+  const { data } = await getClient().get('/filtering/status');
   return data;
 };
 
 export const setFiltering = async (enabled: boolean) => {
-  const { data } = await getClient().post("/filtering/config", { enabled });
+  const { data } = await getClient().post('/filtering/config', { enabled });
   return data;
 };

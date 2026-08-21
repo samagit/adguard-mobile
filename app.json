@@ -21,7 +21,7 @@
         "backgroundColor": "#0d1f3c"
       },
       "package": "com.samagit.adguardmobile",
-      "versionCode": 6,
+      "versionCode": 7,
       "predictiveBackGestureEnabled": false
     },
     "web": {
