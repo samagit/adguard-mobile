@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — AdGuard Mobile</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 24px; color: #1e293b; line-height: 1.7; }
+    h1 { font-size: 28px; color: #0f172a; }
+    h2 { font-size: 18px; color: #0f172a; margin-top: 32px; }
+    p, li { font-size: 15px; color: #334155; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { text-align: left; padding: 10px 12px; border: 1px solid #e2e8f0; font-size: 14px; }
+    th { background: #f8fafc; font-weight: 600; }
+    a { color: #2563eb; }
+    .updated { color: #64748b; font-size: 14px; }
+    .summary { background: #eff6ff; border-left: 4px solid #2563eb; padding: 16px 20px; border-radius: 4px; margin: 24px 0; }
+  </style>
+</head>
+<body>
+
+<h1>Privacy Policy for AdGuard Mobile</h1>
+<p class="updated">Last updated: April 2026</p>
+
+<div class="summary">
+  <strong>Short version:</strong> AdGuard Mobile does not collect, store, or transmit any personal data to any server other than your own AdGuard Home instance.
+</div>
+
+<h2>Overview</h2>
+<p>AdGuard Mobile is an open-source mobile companion app for AdGuard Home. This privacy policy explains how the app handles your data.</p>
+
+<h2>Data We Collect</h2>
+<p>AdGuard Mobile does not collect any data. Specifically:</p>
+<ul>
+  <li>No analytics</li>
+  <li>No crash reporting sent to third parties</li>
+  <li>No advertising identifiers</li>
+  <li>No usage tracking</li>
+  <li>No account registration required</li>
+</ul>
+
+<h2>Data Stored on Your Device</h2>
+<p>The app stores the following information <strong>locally on your device only</strong>, using Android's secure encrypted storage (<code>expo-secure-store</code>):</p>
+<ul>
+  <li>Your AdGuard Home host address (IP and port)</li>
+  <li>Your AdGuard Home username</li>
+  <li>Your AdGuard Home password (encrypted)</li>
+  <li>Your OPNsense API key and secret (encrypted, if OPNsense integration is enabled)</li>
+</ul>
+<p>This information never leaves your device except to communicate directly with your own AdGuard Home and OPNsense instances on your local network.</p>
+
+<h2>Network Communication</h2>
+<p>AdGuard Mobile communicates exclusively with:</p>
+<ol>
+  <li><strong>Your AdGuard Home instance</strong> — all DNS stats, device lists, query logs, and settings are fetched directly from your self-hosted AdGuard Home server on your local network.</li>
+  <li><strong>Your OPNsense instance</strong> (optional) — DHCP lease data is fetched from your self-hosted OPNsense router for MAC-based device identification. This is only used if you enable OPNsense integration.</li>
+  <li><strong>api.macvendors.com</strong> — used to look up device manufacturer names from MAC address prefixes (OUI lookup). Only the first 3 octets of a MAC address are sent, never a full MAC address.</li>
+</ol>
+<p>No other external servers are contacted.</p>
+
+<h2>Third-Party Services</h2>
+<table>
+  <tr><th>Service</th><th>Purpose</th><th>Data Sent</th></tr>
+  <tr><td>api.macvendors.com</td><td>Device manufacturer lookup</td><td>MAC OUI prefix only (3 octets)</td></tr>
+</table>
+<p>No advertising networks, analytics platforms, or social media SDKs are included in this app.</p>
+
+<h2>Children's Privacy</h2>
+<p>AdGuard Mobile is a network management tool intended for use by adults. It does not knowingly collect any information from children under 13.</p>
+
+<h2>Open Source</h2>
+<p>AdGuard Mobile is fully open source under the GPL v3 license. You can review all code at:<br>
+<a href="https://github.com/samagit/adguard-mobile">https://github.com/samagit/adguard-mobile</a></p>
+
+<h2>Changes to This Policy</h2>
+<p>If this policy changes, the updated version will be posted at this URL and the "Last updated" date will be revised.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this privacy policy, open an issue at:<br>
+<a href="https://github.com/samagit/adguard-mobile/issues">https://github.com/samagit/adguard-mobile/issues</a></p>
+
+<hr>
+<p><em>AdGuard Mobile is an independent open-source project and is not affiliated with AdGuard Software Ltd.</em></p>
+
+</body>
+</html>
