@@ -155,6 +155,7 @@ Issues and PRs welcome. If a device on your network isn't detected correctly, op
 - [ ] DHCP lease integration for MAC-based detection during discovery
 - [ ] Multiple AdGuard Home instance support
 - [ ] Dark / light theme toggle
+- [ ] Optional domain-based SSL for OPNsense (e.g. `opnsense.yourdomain.com`) with proper cert verification vs IP-based with self-signed cert bypass
 
 ---
 
