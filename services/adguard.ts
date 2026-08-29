@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/auth';
+import { isDemoMode, DEMO_STATS, DEMO_STATUS, DEMO_CLIENTS, DEMO_QUERY_LOG, DEMO_ACCESS } from './demoData';
 
 const getClient = () => {
   const { host, username, password } = useAuthStore.getState();
@@ -8,6 +9,11 @@ const getClient = () => {
     auth: { username, password },
     timeout: 5000,
   });
+};
+
+const isDemo = () => {
+  const { host, username, password } = useAuthStore.getState();
+  return isDemoMode(host, username, password);
 };
 
 // ── IPs to always ignore ───────────────────────────────────────────────────────
@@ -137,23 +143,34 @@ export const autoAddDiscoveredDevices = async (registeredIds: string[]) => {
 
 // ── Status ────────────────────────────────────────────────────────────────────
 export const getStatus = async () => {
+  if (isDemo()) return DEMO_STATUS;
   const { data } = await getClient().get('/status');
   return data;
 };
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
 export const getStats = async () => {
+  if (isDemo()) return DEMO_STATS;
   const { data } = await getClient().get('/stats');
   return data;
 };
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const getClients = async () => {
+  if (isDemo()) return DEMO_CLIENTS;
   const { data } = await getClient().get('/clients');
   return data;
 };
 
 export const getClientsWithStatus = async () => {
+  if (isDemo()) {
+    return {
+      clients: DEMO_CLIENTS.clients.map((c) => ({
+        ...c,
+        disallowed: DEMO_ACCESS.disallowed_clients.some((id) => c.ids.includes(id)),
+      })),
+    };
+  }
   const [clientsData, accessData] = await Promise.all([
     getClient().get('/clients'),
     getClient().get('/access/list'),
@@ -171,11 +188,25 @@ export const getClientsWithStatus = async () => {
 };
 
 export const getDisallowedClients = async (): Promise<string[]> => {
+  if (isDemo()) return DEMO_ACCESS.disallowed_clients;
   const { data } = await getClient().get('/access/list');
   return data.disallowed_clients ?? [];
 };
 
 export const blockClient = async (identifier: string, block: boolean) => {
+  if (isDemo()) {
+    // In demo mode just update the in-memory demo access list
+    if (block) {
+      if (!DEMO_ACCESS.disallowed_clients.includes(identifier)) {
+        DEMO_ACCESS.disallowed_clients.push(identifier);
+      }
+    } else {
+      DEMO_ACCESS.disallowed_clients = DEMO_ACCESS.disallowed_clients.filter(
+        (c) => c !== identifier
+      );
+    }
+    return;
+  }
   const current = await getDisallowedClients();
   const updated = block
     ? [...new Set([...current, identifier])]
@@ -191,12 +222,17 @@ export const blockClient = async (identifier: string, block: boolean) => {
 
 // ── Query Log ─────────────────────────────────────────────────────────────────
 export const getQueryLog = async (limit = 50) => {
+  if (isDemo()) return DEMO_QUERY_LOG;
   const { data } = await getClient().get(`/querylog?limit=${limit}`);
   return data;
 };
 
 // ── Protection ────────────────────────────────────────────────────────────────
 export const setProtection = async (enabled: boolean) => {
+  if (isDemo()) {
+    DEMO_STATUS.protection_enabled = enabled;
+    return DEMO_STATUS;
+  }
   const { data } = await getClient().post('/dns_config', {
     protection_enabled: enabled,
   });

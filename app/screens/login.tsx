@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuthStore } from "../../stores/auth";
+import { isDemoMode } from "../../services/demoData";
 import axios from "axios";
 
 export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -41,16 +42,15 @@ export default function LoginScreen({ onLogin }: { onLogin: () => void }) {
 
     setLoading(true);
     try {
-      // Test AdGuard Home connection first
-      await axios.get(`http://${host}/control/status`, {
-        auth: { username, password },
-        timeout: 5000,
-      });
+      // Skip network test for demo mode
+      if (!isDemoMode(host, username, password)) {
+        await axios.get(`http://${host}/control/status`, {
+          auth: { username, password },
+          timeout: 5000,
+        });
+      }
 
       // Save credentials and navigate
-      // OPNsense credentials are saved but NOT tested here —
-      // the connection is attempted silently during device discovery.
-      // This avoids SSL cert issues with self-signed OPNsense certificates.
       await setCredentials(
         host, username, password,
         opnsenseEnabled
